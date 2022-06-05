@@ -79,6 +79,49 @@ def close(session_attributes, fulfillment_state, message):
 
     return response
 
+def validate_data(age, investment_amount, intent_request):
+    """
+    Validates the data provided by the user.
+    """
+
+    # Validate that the user is between 0 and 65 years old
+    if age is not None:
+        age = parse_int(age)
+        if 0 >= age or age > 65:
+            return build_validation_result(
+                False,
+                "age",
+                "Age must be between 0 and 65 years old to use this service, "
+                "please provide a different date of birth.",
+            )
+
+    # Validate the investment amount, it should be > 0
+    if investment_amount is not None:
+        investment_amount = parse_int(
+            investment_amount
+        )  # Since parameters are strings it's important to cast values
+        if investment_amount < 5000:
+            return build_validation_result(
+                False,
+                "investmentAmount",
+                "The amount invested should be greater than or equal to $5000, "
+                "please provide a valid amount in dollars to invest.",
+            )
+    return build_validation_result(True, None, None)
+
+def getresponse(risk_level):
+    if risk_level == "none":
+        return "100%/ bonds (AGG), 0%/ equities (SPY)"
+    elif risk_level == "low":
+        return "60%/ bonds (AGG), 40%/ equities (SPY)"
+    elif risk_level == "medium":
+        return "40%/ bonds (AGG), 60%/ equities (SPY)"
+    else:
+        return "20%/ bonds (AGG), 80%/ equities (SPY)"
+
+
+
+
 
 """
 Step 3: Enhance the Robo Advisor with an Amazon Lambda Function
@@ -123,8 +166,50 @@ def recommend_portfolio(intent_request):
     investment_amount = get_slots(intent_request)["investmentAmount"]
     risk_level = get_slots(intent_request)["riskLevel"]
     source = intent_request["invocationSource"]
+    
+    
+    if source == "DialogCodeHook":
+        # This code performs basic validation on the supplied input slots.
 
-    # YOUR CODE GOES HERE!
+        # Gets all the slots
+        slots = get_slots(intent_request)
+
+        # Validates user's input using the validate_data function
+        validation_result = validate_data(age, investment_amount, intent_request)
+
+        # If the data provided by the user is not valid,
+        # the elicitSlot dialog action is used to re-prompt for the first violation detected.
+        if not validation_result["isValid"]:
+            slots[validation_result["violatedSlot"]] = None  # Cleans invalid slot
+
+            # Returns an elicitSlot dialog to request new data for the invalid slot
+            return elicit_slot(
+                intent_request["sessionAttributes"],
+                intent_request["currentIntent"]["name"],
+                slots,
+                validation_result["violatedSlot"],
+                validation_result["message"],
+            )
+
+        # Fetch current session attributes
+        output_session_attributes = intent_request["sessionAttributes"]
+
+        # Once all slots are valid, a delegate dialog is returned to Lex to choose the next course of action.
+        return delegate(output_session_attributes, get_slots(intent_request))
+        # Get the current price of bitcoin in dolars and make the conversion from dollars to bitcoin.
+
+    # Return a message with conversion's result.
+    return close(
+        intent_request["sessionAttributes"],
+        "Fulfilled",
+        {
+            "contentType": "PlainText",
+            "content": getresponse(risk_level)
+            },
+    )
+
+
+
 
 
 ### Intents Dispatcher ###
